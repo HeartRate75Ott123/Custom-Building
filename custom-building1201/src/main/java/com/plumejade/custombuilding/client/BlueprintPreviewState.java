@@ -239,13 +239,17 @@ public final class BlueprintPreviewState {
         }
         Rotation rotation = BlueprintRotations.rotationFor(facing);
 
-        // World space block map: the key of the fake world used for face culling.
+        // World space block map: the key of the fake world used for face culling.  Air carries no geometry and
+        // behaves exactly like a missing entry, so it is left out.
         Map<BlockPos, BlockState> blocks = new HashMap<>();
         for (int i = 0; i < schematic.positions().size(); i++) {
+            BlockState state = schematic.states().get(i);
+            if (state.isAir()) {
+                continue;
+            }
             BlockPos relative = StructureTemplate.transform(schematic.positions().get(i),
                     Mirror.NONE, rotation, BlockPos.ZERO);
-            BlockPos world = origin.offset(relative);
-            blocks.put(world, schematic.states().get(i).rotate(rotation));
+            blocks.put(origin.offset(relative), state.rotate(rotation));
         }
 
         Map<Long, List<BlockPos>> sections = new HashMap<>();

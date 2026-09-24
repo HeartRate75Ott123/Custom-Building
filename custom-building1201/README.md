@@ -48,6 +48,22 @@ translucent ghost of the building in the world, then:
 
 The chosen orientation is remembered in `config/custom_building-client.toml`.
 
+### Blocks this version does not know
+
+The structure file is read by the mod itself instead of by vanilla's `StructureTemplate`, because vanilla
+parses the palette with `getOrThrow`: one block id that does not exist here - a block from an optional mod,
+or a block that was renamed after this version - makes the whole template fail to load and the blueprint
+becomes unusable.
+
+Instead, unknown blocks are treated as **air**: the spot they occupy is cleared when the blueprint is built,
+and the missing ids are listed once in the log.  This also means the built-in cottage still builds without
+`kaleidoscope_cookery`, `sophisticatedstorage`, `enchantinginfuser`, `exposure` and `easyanvils` (its kitchen
+furniture is simply absent), and that `minecraft:short_grass` from a newer datapack maps back to
+`minecraft:grass`.
+
+Vanilla's behaviour of clearing the space the structure occupies is kept: the structure nbt stores air for
+every empty position in its bounding box, and those positions are cleared as well.
+
 ## Differences from the 1.21.1 build
 
 The gameplay is the same; only the plumbing differs, because 1.20.1 predates several of the APIs the

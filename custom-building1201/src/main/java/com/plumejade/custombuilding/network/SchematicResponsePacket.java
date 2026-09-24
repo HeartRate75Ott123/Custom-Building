@@ -49,7 +49,8 @@ public class SchematicResponsePacket {
             states.add(index >= 0 && index < palette.size() ? palette.get(index) : Blocks.AIR.defaultBlockState());
         }
 
-        this.schematic = new BlueprintSchematic(blueprintId, size, positions, states);
+        // The client only draws the ghost, so the block entity data is not sent.
+        this.schematic = new BlueprintSchematic(blueprintId, size, positions, states, List.of());
     }
 
     public void encode(FriendlyByteBuf buffer) {

@@ -2,7 +2,9 @@ package com.plumejade.custombuilding.network;
 
 import java.util.function.Supplier;
 
+import com.plumejade.custombuilding.CustomBuilding;
 import com.plumejade.custombuilding.blueprint.BlueprintSchematics;
+import com.plumejade.custombuilding.blueprint.BlueprintSchematic;
 
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.resources.ResourceLocation;
@@ -12,6 +14,9 @@ import net.minecraftforge.network.NetworkEvent;
 
 /** Asks the server for the blocks of a blueprint so the client can render the ghost preview. */
 public class SchematicRequestPacket {
+    /** Keeps the schematic packet comfortably below the network size limit. */
+    private static final int MAX_PREVIEW_BLOCKS = 60_000;
+
     private final ResourceLocation blueprintId;
 
     public SchematicRequestPacket(ResourceLocation blueprintId) {
@@ -32,6 +37,12 @@ public class SchematicRequestPacket {
             return;
         }
         ServerLevel level = player.serverLevel();
-        CBNetwork.sendToPlayer(player, new SchematicResponsePacket(BlueprintSchematics.load(level, this.blueprintId)));
+        BlueprintSchematic schematic = BlueprintSchematics.load(level, this.blueprintId);
+        if (schematic.positions().size() > MAX_PREVIEW_BLOCKS) {
+            CustomBuilding.LOGGER.warn("Blueprint '{}' has {} blocks, too many to preview",
+                    this.blueprintId, schematic.positions().size());
+            schematic = BlueprintSchematic.EMPTY;
+        }
+        CBNetwork.sendToPlayer(player, new SchematicResponsePacket(schematic));
     }
 }

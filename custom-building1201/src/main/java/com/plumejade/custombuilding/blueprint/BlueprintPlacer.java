@@ -1,5 +1,8 @@
 package com.plumejade.custombuilding.blueprint;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import javax.annotation.Nullable;
 
 import com.plumejade.custombuilding.CustomBuilding;
@@ -9,24 +12,31 @@ import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.Vec3i;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
-import net.minecraft.util.RandomSource;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Mirror;
 import net.minecraft.world.level.block.Rotation;
+import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.level.levelgen.structure.templatesystem.StructurePlaceSettings;
 import net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplate;
 
 /**
- * Places the structure of a blueprint and reports the result, mirroring the wording and colouring used by
+ * Builds the structure of a blueprint and reports the result, mirroring the wording and colouring used by
  * MC-Prefab: yellow system messages when a structure cannot be built, and a green one when it can.
+ *
+ * <p>The blocks are placed straight from {@link BlueprintSchematic} rather than through vanilla's
+ * {@code StructureTemplate}, for two reasons: the schematic reader tolerates blocks that do not exist in this
+ * version - they become air, so a datapack written for another version, or one referencing optional mods,
+ * still builds - and the ghost preview shows exactly the same block list that is placed.</p>
  */
 public final class BlueprintPlacer {
     private BlueprintPlacer() {}
@@ -49,8 +59,8 @@ public final class BlueprintPlacer {
             return;
         }
 
-        StructureTemplate template = loadTemplate(level, definition);
-        if (template == null) {
+        BlueprintSchematic schematic = BlueprintSchematics.load(level, definition.id());
+        if (schematic.isEmpty()) {
             sendMessage(player, Component.translatable("message.custom_building.build.missing_structure",
                     definition.structure().toString()), ChatFormatting.YELLOW);
             return;
@@ -58,47 +68,52 @@ public final class BlueprintPlacer {
 
         Direction facing = requestedFacing.getAxis().isHorizontal() ? requestedFacing : Direction.SOUTH;
         Rotation rotation = BlueprintRotations.rotationFor(facing);
-        Vec3i templateSize = template.getSize();
-        Vec3i footprint = BlueprintRotations.rotatedSize(templateSize, rotation);
-
-        // The footprint always starts at the block in front of the clicked face, whatever the rotation.
         BlockPos target = pos.relative(face);
+        BlockPos origin = BlueprintRotations.originFor(target, schematic.size(), facing);
+        MinecraftServer server = level.getServer();
 
-        // Protected / unbreakable blocks block the build, just like in MC-Prefab.
-        BlockPos max = target.offset(footprint.getX() - 1, footprint.getY() - 1, footprint.getZ() - 1);
-        for (BlockPos current : BlockPos.betweenClosed(target, max)) {
-            BlockState state = level.getBlockState(current);
-            if (state.isAir()) {
-                continue;
+        // Work out every destination first, so the protection check can refuse the whole build before
+        // anything is changed.
+        List<BlockPos> destinations = new ArrayList<>(schematic.positions().size());
+        for (BlockPos relative : schematic.positions()) {
+            BlockPos world = origin.offset(StructureTemplate.transform(relative, Mirror.NONE, rotation, BlockPos.ZERO));
+            BlockState existing = level.getBlockState(world);
+            if (!existing.isAir()) {
+                if (existing.getDestroySpeed(level, world) < 0.0F) {
+                    sendMessage(player, Component.translatable("message.custom_building.build.nobuild_unbreakable",
+                            existing.getBlock().getName(), world.getX(), world.getY(), world.getZ()), ChatFormatting.YELLOW);
+                    return;
+                }
+                if (server != null && server.isUnderSpawnProtection(level, world, player)) {
+                    sendMessage(player, Component.translatable("message.custom_building.build.nobuild_spawn_protection",
+                            existing.getBlock().getName(), world.getX(), world.getY(), world.getZ()), ChatFormatting.YELLOW);
+                    return;
+                }
             }
-            if (state.getDestroySpeed(level, current) < 0.0F) {
-                sendMessage(player, Component.translatable("message.custom_building.build.nobuild_unbreakable",
-                        state.getBlock().getName(), current.getX(), current.getY(), current.getZ()), ChatFormatting.YELLOW);
-                return;
-            }
-            if (level.getServer() != null && level.getServer().isUnderSpawnProtection(level, current, player)) {
-                sendMessage(player, Component.translatable("message.custom_building.build.nobuild_spawn_protection",
-                        state.getBlock().getName(), current.getX(), current.getY(), current.getZ()), ChatFormatting.YELLOW);
-                return;
-            }
+            destinations.add(world);
         }
 
-        BlockPos origin = BlueprintRotations.originFor(target, templateSize, facing);
-        StructurePlaceSettings settings = new StructurePlaceSettings()
-                .setRotation(rotation)
-                .setRotationPivot(BlockPos.ZERO)
-                .setIgnoreEntities(false);
-        RandomSource random = RandomSource.create(level.getRandom().nextLong());
-
-        boolean placed;
+        // Blocks that this version does not know about were turned into air by the schematic reader, so they
+        // clear the spot they occupy instead of leaving the terrain behind.
+        int changed = 0;
         try {
-            placed = template.placeInWorld(level, origin, origin, settings, random, Block.UPDATE_ALL);
+            for (int i = 0; i < destinations.size(); i++) {
+                BlockPos world = destinations.get(i);
+                BlockState state = schematic.states().get(i).rotate(rotation);
+                if (level.setBlock(world, state, Block.UPDATE_ALL)) {
+                    changed++;
+                }
+                CompoundTag blockEntityTag = schematic.blockEntity(i);
+                if (blockEntityTag != null && !state.isAir()) {
+                    loadBlockEntity(level, world, blockEntityTag);
+                }
+            }
         } catch (Exception exception) {
-            CustomBuilding.LOGGER.error("Failed to place blueprint '{}' at {}", definition.id(), origin, exception);
-            placed = false;
+            CustomBuilding.LOGGER.error("Failed to build blueprint '{}' at {}", definition.id(), origin, exception);
+            changed = 0;
         }
 
-        if (!placed) {
+        if (changed == 0) {
             sendMessage(player, Component.translatable("message.custom_building.build.failed",
                     definition.structure().toString()), ChatFormatting.YELLOW);
             return;
@@ -109,6 +124,23 @@ public final class BlueprintPlacer {
 
         if (!player.getAbilities().instabuild) {
             stack.shrink(1);
+        }
+    }
+
+    private static void loadBlockEntity(ServerLevel level, BlockPos pos, CompoundTag tag) {
+        BlockEntity blockEntity = level.getBlockEntity(pos);
+        if (blockEntity == null) {
+            return;
+        }
+        try {
+            CompoundTag copy = tag.copy();
+            copy.putInt("x", pos.getX());
+            copy.putInt("y", pos.getY());
+            copy.putInt("z", pos.getZ());
+            blockEntity.load(copy);
+            blockEntity.setChanged();
+        } catch (Exception exception) {
+            CustomBuilding.LOGGER.warn("Could not restore the block entity data at {}", pos, exception);
         }
     }
 
@@ -123,23 +155,6 @@ public final class BlueprintPlacer {
             return null;
         }
         return BlueprintRotations.originFor(clickedPos.relative(face), templateSize, facing);
-    }
-
-    @Nullable
-    private static StructureTemplate loadTemplate(ServerLevel level, BlueprintDefinition definition) {
-        try {
-            // get() instead of getOrCreate(): getOrCreate() happily returns an empty template for a
-            // missing file, which would silently do nothing.
-            StructureTemplate template = level.getStructureManager().get(definition.structure()).orElse(null);
-            if (template == null || template.getSize().equals(Vec3i.ZERO)) {
-                return null;
-            }
-            return template;
-        } catch (Exception exception) {
-            CustomBuilding.LOGGER.error("Failed to load structure '{}' for blueprint '{}'",
-                    definition.structure(), definition.id(), exception);
-            return null;
-        }
     }
 
     public static void sendMessage(ServerPlayer player, Component message, ChatFormatting colour) {
