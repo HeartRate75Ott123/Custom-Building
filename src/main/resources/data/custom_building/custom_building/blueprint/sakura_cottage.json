@@ -1,0 +1,7 @@
+{
+    "structure": "custom_building:sakura_cottage",
+    "preview": "assets/custom_building/textures/blueprint/sakura_cottage.png",
+    "texture": "assets/custom_building/textures/item/sakura_blueprint.png",
+    "name": "§d🌸樱花小屋蓝图",
+    "tooltip": ["§a右键地面来使用"]
+}

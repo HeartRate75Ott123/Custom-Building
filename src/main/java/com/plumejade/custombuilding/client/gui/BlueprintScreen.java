@@ -1,0 +1,159 @@
+package com.plumejade.custombuilding.client.gui;
+
+import com.plumejade.custombuilding.CustomBuilding;
+import com.plumejade.custombuilding.blueprint.BlueprintDefinition;
+import com.plumejade.custombuilding.blueprint.BlueprintRotations;
+import com.plumejade.custombuilding.client.BlueprintPreviewState;
+import com.plumejade.custombuilding.config.ClientPreferences;
+import com.plumejade.custombuilding.network.BlueprintBuildPayload;
+
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.AbstractWidget;
+import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.events.GuiEventListener;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.core.Vec3i;
+import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.InteractionHand;
+import net.neoforged.neoforge.network.PacketDistributor;
+
+/**
+ * The building panel shown when a configured blueprint is right-clicked.
+ *
+ * <p>The layout, the panel textures and the button textures are copied from MC-Prefab 1.21.1's
+ * {@code GuiBasicStructure}: a control panel on the left, the preview image on the right, and the
+ * Preview / Cancel / Build buttons along the bottom.  The "Building Options" row is replaced by the
+ * "朝向" row that turns the building around.</p>
+ */
+public class BlueprintScreen extends Screen {
+    private static final ResourceLocation LEFT_PANEL =
+            ResourceLocation.fromNamespaceAndPath(CustomBuilding.MODID, "textures/gui/custom_left_panel.png");
+    private static final ResourceLocation RIGHT_PANEL =
+            ResourceLocation.fromNamespaceAndPath(CustomBuilding.MODID, "textures/gui/custom_right_panel.png");
+
+    // Panel geometry, straight from GuiBase/GuiBasicStructure.
+    private static final int INITIAL_X = 215;
+    private static final int INITIAL_Y = 117;
+    private static final int IMAGE_PANEL_X = 136;
+    private static final int IMAGE_PANEL_WIDTH = 285;
+    private static final int PANEL_HEIGHT = 190;
+    private static final int PANEL_TEXTURE_WIDTH = 89;
+    private static final int PANEL_TEXTURE_HEIGHT = 233;
+
+    /** The preview is always drawn as a 4:3 box. */
+    private static final int PREVIEW_WIDTH = 240;
+    private static final int PREVIEW_HEIGHT = 180;
+
+    private static final int TEXT_COLOUR = 0x404040;
+
+    private final BlueprintDefinition definition;
+    private final BlockPos pos;
+    private final Direction face;
+    private final InteractionHand hand;
+    private Direction facing;
+
+    public BlueprintScreen(BlueprintDefinition definition, BlockPos pos, Direction face, InteractionHand hand) {
+        super(BlueprintDefinition.textComponent(definition.name()));
+        this.definition = definition;
+        this.pos = pos;
+        this.face = face;
+        this.hand = hand;
+        this.facing = defaultFacing();
+    }
+
+    /** Opens the panel on the orientation that was used last time, or facing the player on first use. */
+    private static Direction defaultFacing() {
+        Direction remembered = ClientPreferences.lastFacing();
+        if (remembered != null && remembered.getAxis().isHorizontal()) {
+            return remembered;
+        }
+        if (Minecraft.getInstance().player != null) {
+            Direction look = Minecraft.getInstance().player.getDirection().getOpposite();
+            if (look.getAxis().isHorizontal()) {
+                return look;
+            }
+        }
+        return Direction.SOUTH;
+    }
+
+    @Override
+    protected void init() {
+        int x = this.width / 2 - INITIAL_X;
+        int y = this.height / 2 - INITIAL_Y;
+
+        this.addRenderableWidget(new ExtendedButton(x + 8, y + 45, 100, 20,
+                Component.translatable(BlueprintRotations.translationKey(this.facing)), button -> {
+                    this.facing = BlueprintRotations.next(this.facing);
+                    button.setMessage(Component.translatable(BlueprintRotations.translationKey(this.facing)));
+                }));
+
+        this.addRenderableWidget(new CustomButton(x + 24, y + 177, 90, 20,
+                Component.translatable("gui.custom_building.button.preview"), button -> this.showPreview()));
+
+        this.addRenderableWidget(Button
+                .builder(Component.translatable("gui.custom_building.button.cancel"), button -> this.onClose())
+                .bounds(x + 154, y + 177, 90, 20)
+                .build());
+
+        this.addRenderableWidget(new CustomButton(x + 310, y + 177, 90, 20,
+                Component.translatable("gui.custom_building.button.build"), button -> this.build()));
+    }
+
+    @Override
+    public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
+        int x = this.width / 2 - INITIAL_X;
+        int y = this.height / 2 - INITIAL_Y;
+
+        this.renderBackground(guiGraphics, mouseX, mouseY, partialTick);
+        // The nine-slice helper draws through its own buffer, so make sure the gui batch is flushed first.
+        guiGraphics.flush();
+
+        GuiUtils.drawContinuousTexturedBox(LEFT_PANEL, x + 2, y + 10, 0, 0, 185, PANEL_HEIGHT,
+                PANEL_TEXTURE_WIDTH, PANEL_TEXTURE_HEIGHT, 2, 2, 4, 4, 0);
+        GuiUtils.drawContinuousTexturedBox(RIGHT_PANEL, x + IMAGE_PANEL_X, y + 10, 0, 0, IMAGE_PANEL_WIDTH, PANEL_HEIGHT,
+                PANEL_TEXTURE_WIDTH, PANEL_TEXTURE_HEIGHT, 2, 2, 4, 4, 0);
+        guiGraphics.flush();
+
+        if (this.definition.preview() != null) {
+            int imageX = x + IMAGE_PANEL_X + (IMAGE_PANEL_WIDTH / 2 - PREVIEW_WIDTH / 2);
+            GuiUtils.bindAndDrawScaledTexture(this.definition.preview(), guiGraphics, imageX, y + 15,
+                    PREVIEW_WIDTH, PREVIEW_HEIGHT, PREVIEW_WIDTH, PREVIEW_HEIGHT, PREVIEW_WIDTH, PREVIEW_HEIGHT);
+        }
+
+        for (GuiEventListener child : this.children()) {
+            if (child instanceof AbstractWidget widget && widget.visible) {
+                widget.render(guiGraphics, mouseX, mouseY, partialTick);
+            }
+        }
+
+        guiGraphics.drawWordWrap(this.font, BlueprintDefinition.textComponent(this.definition.name()),
+                x + 8, y + 17, 160, TEXT_COLOUR);
+        guiGraphics.drawString(this.font, Component.translatable("gui.custom_building.facing"),
+                x + 8, y + 33, TEXT_COLOUR, false);
+
+        Vec3i footprint = BlueprintRotations.rotatedSize(this.definition.size(), this.facing);
+        guiGraphics.drawString(this.font, Component.translatable("gui.custom_building.size",
+                        this.definition.size().getX(), this.definition.size().getY(), this.definition.size().getZ()),
+                x + 8, y + 78, TEXT_COLOUR, false);
+        guiGraphics.drawString(this.font, Component.translatable("gui.custom_building.footprint",
+                        footprint.getX(), footprint.getZ()),
+                x + 8, y + 92, TEXT_COLOUR, false);
+        guiGraphics.drawString(this.font, Component.translatable("gui.custom_building.hint"),
+                x + 8, y + 112, TEXT_COLOUR, false);
+    }
+
+    private void showPreview() {
+        BlueprintPreviewState.request(this.definition.id(), this.pos, this.face, this.facing, this.hand);
+        this.onClose();
+    }
+
+    private void build() {
+        ClientPreferences.setLastFacing(this.facing);
+        PacketDistributor.sendToServer(new BlueprintBuildPayload(this.definition.id(), this.pos, this.face, this.facing, this.hand));
+        this.onClose();
+    }
+}
