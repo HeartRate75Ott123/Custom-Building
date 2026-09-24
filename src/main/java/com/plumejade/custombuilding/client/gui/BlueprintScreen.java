@@ -41,8 +41,16 @@ public class BlueprintScreen extends Screen {
     private static final int IMAGE_PANEL_X = 136;
     private static final int IMAGE_PANEL_WIDTH = 285;
     private static final int PANEL_HEIGHT = 190;
-    private static final int PANEL_TEXTURE_WIDTH = 89;
-    private static final int PANEL_TEXTURE_HEIGHT = 233;
+
+    /**
+     * The panel art of the copied Prefab textures fills exactly x 0..89 / y 0..233 of their 256x256 canvas,
+     * with a 3 pixel border on every side (black outline, two highlight pixels, then the fill).  MC-Prefab
+     * asks for 89x233 with 2/2/4/4 borders, which drops the outermost outline column and row, leaving a
+     * see-through 1 pixel strip along the right and bottom edge of the panels.
+     */
+    private static final int PANEL_TEXTURE_WIDTH = 90;
+    private static final int PANEL_TEXTURE_HEIGHT = 234;
+    private static final int PANEL_BORDER = 3;
 
     /** The preview is always drawn as a 4:3 box. */
     private static final int PREVIEW_WIDTH = 240;
@@ -113,9 +121,9 @@ public class BlueprintScreen extends Screen {
         guiGraphics.flush();
 
         GuiUtils.drawContinuousTexturedBox(LEFT_PANEL, x + 2, y + 10, 0, 0, 185, PANEL_HEIGHT,
-                PANEL_TEXTURE_WIDTH, PANEL_TEXTURE_HEIGHT, 2, 2, 4, 4, 0);
+                PANEL_TEXTURE_WIDTH, PANEL_TEXTURE_HEIGHT, PANEL_BORDER, PANEL_BORDER, PANEL_BORDER, PANEL_BORDER, 0);
         GuiUtils.drawContinuousTexturedBox(RIGHT_PANEL, x + IMAGE_PANEL_X, y + 10, 0, 0, IMAGE_PANEL_WIDTH, PANEL_HEIGHT,
-                PANEL_TEXTURE_WIDTH, PANEL_TEXTURE_HEIGHT, 2, 2, 4, 4, 0);
+                PANEL_TEXTURE_WIDTH, PANEL_TEXTURE_HEIGHT, PANEL_BORDER, PANEL_BORDER, PANEL_BORDER, PANEL_BORDER, 0);
         guiGraphics.flush();
 
         if (this.definition.preview() != null) {
