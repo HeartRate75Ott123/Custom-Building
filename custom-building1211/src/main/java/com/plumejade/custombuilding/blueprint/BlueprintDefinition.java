@@ -16,7 +16,7 @@ import net.minecraft.resources.ResourceLocation;
 /**
  * A fully resolved blueprint.
  *
- * @param id        the datapack file id, e.g. {@code custom_building:sakura_cottage}
+ * @param id        the datapack file id, e.g. {@code custom_building:initial_house}
  * @param structure the structure template id, loaded from {@code data/<ns>/structure/<path>.nbt}
  * @param preview   the preview image shown in the item tooltip, may be {@code null}; always stretched to 4:3
  * @param texture   the inventory texture of the blueprint item

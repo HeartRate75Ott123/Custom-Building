@@ -1,0 +1,7 @@
+{
+    "structure": "custom_building:initial_house",
+    "preview": "assets/custom_building/textures/blueprint/initial_house.png",
+    "texture": "assets/custom_building/textures/item/initial_house.png",
+    "name": "§6初始小屋蓝图",
+    "tooltip": ["§a右键地面来使用"]
+}

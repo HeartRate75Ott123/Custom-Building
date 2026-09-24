@@ -53,10 +53,10 @@ public final class GuideBook {
                 §0数据包路径：
                 §1data/<命名空间>/custom_building/blueprint/<名称>.json
                 §0例：
-                §1data/custom_building/custom_building/blueprint/sakura_cottage.json
+                §1data/custom_building/custom_building/blueprint/initial_house.json
 
                 §0蓝图 id 就是「命名空间:文件名」，上例是
-                §1custom_building:sakura_cottage
+                §1custom_building:initial_house
 
                 §7同目录下的 blueprint_template.txt 是非 json 后缀的示例模板，不会被解析。""",
 
@@ -64,7 +64,7 @@ public final class GuideBook {
                 §6§l2. 字段一览
 
                 §1structure §0（必填）
-                结构名。写 sakura_cottage 时按本文件的命名空间补全，也可以写完整 id。
+                结构名。写 initial_house 时按本文件的命名空间补全，也可以写完整 id。
 
                 §1preview §0（可选）
                 悬停时显示的预览图，会被拉伸成 §14:3§0。
@@ -82,18 +82,18 @@ public final class GuideBook {
                 说明文字，可以是一行字符串，也可以是字符串数组。
 
                 §0名称和说明都支持两种写法：
-                §1· 翻译键§0：写 mypack.blueprint.sakura，再在语言文件里填内容。
+                §1· 翻译键§0：写 mypack.blueprint.initial_house，再在语言文件里填内容。
                 §1· 直接写字§0：支持 §a§ 颜色代码 §0，例如
-                §1§d🌸樱花小屋蓝图""",
+                §1§6初始小屋蓝图""",
 
                 """
                 §6§l4. 贴图路径怎么写
 
                 §0下面几种写法意思完全一样：
-                §1custom_building:textures/item/sakura_blueprint.png
-                §1assets/custom_building/textures/item/sakura_blueprint.png
-                §1textures/item/sakura_blueprint.png
-                §1item/sakura_blueprint.png
+                §1custom_building:textures/item/initial_house.png
+                §1assets/custom_building/textures/item/initial_house.png
+                §1textures/item/initial_house.png
+                §1item/initial_house.png
 
                 §0规则：可以省略开头的 assets/；没有命名空间时使用蓝图文件自己的命名空间；缺少 textures/ 会自动补上；缺少 .png 会自动补上。""",
 
@@ -112,18 +112,18 @@ public final class GuideBook {
                 """
                 §6§l6. 完整示例
 
-                §0data/custom_building/custom_building/blueprint/sakura_cottage.json
+                §0data/custom_building/custom_building/blueprint/initial_house.json
 
                 §1{
-                  "structure": "custom_building:sakura_cottage",
-                  "preview": "assets/custom_building/textures/blueprint/sakura_cottage.png",
-                  "texture": "assets/custom_building/textures/item/sakura_blueprint.png",
-                  "name": "§d🌸樱花小屋蓝图",
+                  "structure": "custom_building:initial_house",
+                  "preview": "assets/custom_building/textures/blueprint/initial_house.png",
+                  "texture": "assets/custom_building/textures/item/initial_house.png",
+                  "name": "§6初始小屋蓝图",
                   "tooltip": ["§a右键地面来使用"]
                 }
 
                 §0结构文件放在：
-                §1data/custom_building/structure/sakura_cottage.nbt""",
+                §1data/custom_building/structure/initial_house.nbt""",
 
                 """
                 §6§l7. 使用、朝向与预览

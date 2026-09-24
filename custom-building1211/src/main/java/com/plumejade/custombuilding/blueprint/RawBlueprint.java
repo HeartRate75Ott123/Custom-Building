@@ -15,10 +15,10 @@ import net.minecraft.resources.ResourceLocation;
  *
  * <pre>{@code
  * {
- *   "structure": "custom_building:sakura_cottage",
- *   "preview":   "assets/custom_building/textures/blueprint/sakura_cottage.png",
- *   "texture":   "assets/custom_building/textures/item/sakura_blueprint.png",
- *   "name":      "§d🌸樱花小屋蓝图",
+ *   "structure": "custom_building:initial_house",
+ *   "preview":   "assets/custom_building/textures/blueprint/initial_house.png",
+ *   "texture":   "assets/custom_building/textures/item/initial_house.png",
+ *   "name":      "§6初始小屋蓝图",
  *   "tooltip":   ["§a右键地面来使用"]
  * }
  * }</pre>

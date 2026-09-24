@@ -15,11 +15,11 @@ import net.minecraft.resources.ResourceLocation;
  * <p>All of the following spellings are accepted and mean the same resource, assuming the blueprint file
  * itself lives in the {@code custom_building} namespace:</p>
  * <ul>
- *     <li>{@code custom_building:textures/item/sakura_blueprint.png} - a full resource location</li>
- *     <li>{@code assets/custom_building/textures/item/sakura_blueprint.png} - the path as it appears in the jar</li>
- *     <li>{@code textures/item/sakura_blueprint.png} - relative to the namespace of the blueprint file</li>
- *     <li>{@code item/sakura_blueprint.png} - {@code textures/} is added automatically</li>
- *     <li>{@code item/sakura_blueprint} - {@code .png} is added automatically</li>
+ *     <li>{@code custom_building:textures/item/initial_house.png} - a full resource location</li>
+ *     <li>{@code assets/custom_building/textures/item/initial_house.png} - the path as it appears in the jar</li>
+ *     <li>{@code textures/item/initial_house.png} - relative to the namespace of the blueprint file</li>
+ *     <li>{@code item/initial_house.png} - {@code textures/} is added automatically</li>
+ *     <li>{@code item/initial_house} - {@code .png} is added automatically</li>
  * </ul>
  */
 public final class BlueprintPaths {

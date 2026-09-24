@@ -19,10 +19,10 @@ The blueprint id is `<namespace>:<name>`.  A non-JSON template file
 
 ```json
 {
-    "structure": "custom_building:sakura_cottage",
-    "preview":   "assets/custom_building/textures/blueprint/sakura_cottage.png",
-    "texture":   "assets/custom_building/textures/item/sakura_blueprint.png",
-    "name":      "§d🌸樱花小屋蓝图",
+    "structure": "custom_building:initial_house",
+    "preview":   "assets/custom_building/textures/blueprint/initial_house.png",
+    "texture":   "assets/custom_building/textures/item/initial_house.png",
+    "name":      "§6初始小屋蓝图",
     "tooltip":   ["§a右键地面来使用"]
 }
 ```
@@ -38,11 +38,11 @@ The blueprint id is `<namespace>:<name>`.  A non-JSON template file
 Texture paths are forgiving:
 
 ```
-custom_building:textures/item/sakura_blueprint.png           full resource location
-assets/custom_building/textures/item/sakura_blueprint.png    path as it appears in the jar
-textures/item/sakura_blueprint.png                           relative to the file's namespace
-item/sakura_blueprint.png                                    "textures/" is added for you
-item/sakura_blueprint                                        ".png" is added for you
+custom_building:textures/item/initial_house.png           full resource location
+assets/custom_building/textures/item/initial_house.png    path as it appears in the jar
+textures/item/initial_house.png                           relative to the file's namespace
+item/initial_house.png                                    "textures/" is added for you
+item/initial_house                                        ".png" is added for you
 ```
 
 ## Behaviour
