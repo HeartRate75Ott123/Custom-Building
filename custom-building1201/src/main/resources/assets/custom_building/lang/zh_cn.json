@@ -1,0 +1,33 @@
+{
+    "itemGroup.custom_building": "自定义建筑",
+
+    "item.custom_building.blueprint": "蓝图",
+
+    "tooltip.custom_building.blueprint.example": "示例物品，空白蓝图没有任何功能。",
+
+    "gui.custom_building.facing": "朝向",
+    "gui.custom_building.size": "尺寸：%1$s × %2$s × %3$s",
+    "gui.custom_building.footprint": "占地：%1$s × %2$s",
+    "gui.custom_building.hint": "预览可查看建筑位置",
+    "gui.custom_building.north": "北",
+    "gui.custom_building.south": "南",
+    "gui.custom_building.east": "东",
+    "gui.custom_building.west": "西",
+    "gui.custom_building.button.build": "建造！",
+    "gui.custom_building.button.cancel": "取消",
+    "gui.custom_building.button.preview": "预览！",
+
+    "message.custom_building.build.success": "建造完成！",
+    "message.custom_building.build.empty_blueprint": "无法建造结构，该蓝图没有配置任何结构。",
+    "message.custom_building.build.unknown_blueprint": "无法建造结构，%1$s 不是已加载的蓝图。",
+    "message.custom_building.build.missing_structure": "无法建造结构，结构文件 %1$s 不存在。",
+    "message.custom_building.build.failed": "无法建造结构 %1$s。",
+    "message.custom_building.build.nobuild_unbreakable": "存在受保护或不可破坏的方块，无法建造。方块名称：%1$s 方块位置：x=%2$s，y=%3$s，z=%4$s。",
+    "message.custom_building.build.nobuild_spawn_protection": "由于角色创建保护，无法构建结构。块：%1$s 位置：x=%2$s, y=%3$s, z=%4$s",
+
+    "message.custom_building.preview.notice": "预览中：左键取消，右键直接放置，潜行+滚轮切换朝向。",
+    "message.custom_building.preview.facing": "朝向：%1$s",
+    "message.custom_building.preview.loading": "正在获取结构数据…",
+    "message.custom_building.preview.cleared": "已取消预览。",
+    "message.custom_building.preview.unavailable": "无法预览，结构数据不可用。"
+}

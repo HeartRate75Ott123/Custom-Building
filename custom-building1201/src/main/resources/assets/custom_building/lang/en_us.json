@@ -1,0 +1,33 @@
+{
+    "itemGroup.custom_building": "Custom Building",
+
+    "item.custom_building.blueprint": "Blueprint",
+
+    "tooltip.custom_building.blueprint.example": "Example item, blank blueprints do nothing.",
+
+    "gui.custom_building.facing": "Facing",
+    "gui.custom_building.size": "Size: %1$s x %2$s x %3$s",
+    "gui.custom_building.footprint": "Footprint: %1$s x %2$s",
+    "gui.custom_building.hint": "Preview shows where it lands",
+    "gui.custom_building.north": "North",
+    "gui.custom_building.south": "South",
+    "gui.custom_building.east": "East",
+    "gui.custom_building.west": "West",
+    "gui.custom_building.button.build": "Build!",
+    "gui.custom_building.button.cancel": "Cancel",
+    "gui.custom_building.button.preview": "Preview!",
+
+    "message.custom_building.build.success": "Structure Complete!",
+    "message.custom_building.build.empty_blueprint": "Cannot create structure, this blueprint does not configure a structure.",
+    "message.custom_building.build.unknown_blueprint": "Cannot create structure, '%1$s' is not a loaded blueprint.",
+    "message.custom_building.build.missing_structure": "Cannot create structure, the structure file '%1$s' does not exist.",
+    "message.custom_building.build.failed": "Cannot create structure '%1$s'.",
+    "message.custom_building.build.nobuild_unbreakable": "Cannot create structure due to protected blocks/area or unbreakable blocks are in the area. Block: %1$s Position: x=%2$s, y=%3$s, z=%4$s",
+    "message.custom_building.build.nobuild_spawn_protection": "Cannot create structure due character creation protection. Block: %1$s Position: x=%2$s, y=%3$s, z=%4$s",
+
+    "message.custom_building.preview.notice": "Previewing: left click cancels, right click builds it, sneak + scroll turns it.",
+    "message.custom_building.preview.facing": "Facing: %1$s",
+    "message.custom_building.preview.loading": "Fetching the structure...",
+    "message.custom_building.preview.cleared": "Preview cancelled.",
+    "message.custom_building.preview.unavailable": "No preview available, the structure could not be read."
+}
