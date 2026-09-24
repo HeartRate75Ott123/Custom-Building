@@ -52,6 +52,9 @@ public class BlueprintScreen extends Screen {
     private static final int PANEL_TEXTURE_HEIGHT = 234;
     private static final int PANEL_BORDER = 3;
 
+    /** Row of the bottom button strip.  Raised from Prefab's 177 so it does not hug the panel edge. */
+    private static final int BUTTON_Y = 170;
+
     /** The preview is always drawn as a 4:3 box. */
     private static final int PREVIEW_WIDTH = 240;
     private static final int PREVIEW_HEIGHT = 180;
@@ -99,15 +102,15 @@ public class BlueprintScreen extends Screen {
                     button.setMessage(Component.translatable(BlueprintRotations.translationKey(this.facing)));
                 }));
 
-        this.addRenderableWidget(new CustomButton(x + 24, y + 177, 90, 20,
+        this.addRenderableWidget(new CustomButton(x + 24, y + BUTTON_Y, 90, 20,
                 Component.translatable("gui.custom_building.button.preview"), button -> this.showPreview()));
 
         this.addRenderableWidget(Button
                 .builder(Component.translatable("gui.custom_building.button.cancel"), button -> this.onClose())
-                .bounds(x + 154, y + 177, 90, 20)
+                .bounds(x + 154, y + BUTTON_Y, 90, 20)
                 .build());
 
-        this.addRenderableWidget(new CustomButton(x + 310, y + 177, 90, 20,
+        this.addRenderableWidget(new CustomButton(x + 310, y + BUTTON_Y, 90, 20,
                 Component.translatable("gui.custom_building.button.build"), button -> this.build()));
     }
 
