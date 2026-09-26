@@ -11,6 +11,7 @@ import net.minecraft.core.HolderLookup;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.packs.resources.ResourceManager;
 import net.minecraft.world.item.CreativeModeTab;
+import net.minecraft.world.item.CreativeModeTabs;
 
 /**
  * Client side half of the blueprint sync.
@@ -77,6 +78,12 @@ public final class ClientBlueprintSync {
                     minecraft.player.canUseGameMasterBlocks() && minecraft.options.operatorItemsTab().get(),
                     registries);
             CustomBuilding.CUSTOM_BUILDING_TAB.get().buildContents(parameters);
+
+            // The creative search box searches the search tab's tree, and that tab collects the search
+            // entries of every other tab.  Rebuild it *after* ours so a freshly configured blueprint is
+            // actually findable (this is also what keeps mods such as JECharacters working: their name
+            // search tree is only fed through this path).
+            CreativeModeTabs.searchTab().buildContents(parameters);
         } catch (Exception exception) {
             CustomBuilding.LOGGER.error("Failed to rebuild the custom building creative tab", exception);
         }
