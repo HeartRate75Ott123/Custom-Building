@@ -48,8 +48,8 @@ cd custom-building1201 && ./gradlew build     # Forge 1.20.1，需要 JDK 17
 | `1.21.1` | 1.21.1 版本线，用于该版本的独立开发与发布 |
 | `1.20.1` | 1.20.1 版本线，同上 |
 
-发版打 tag：`v<mod版本>-mc<MC版本>`，例如 `v1.0.0-mc1.21.1`。构建产物自带版本号：
-`custom_building-1.21.1-1.0.0.jar` 与 `custom_building-1.20.1-1.0.0.jar`，两个版本不会同名。
+发版打 tag：`v<mod版本>-mc<MC版本>`，例如 `v1.0.1-mc1.21.1`。构建产物自带版本号：
+`custom_building-1.21.1-1.0.1.jar` 与 `custom_building-1.20.1-1.0.1.jar`，两个版本不会同名。
 
 ## 发布文案
 
