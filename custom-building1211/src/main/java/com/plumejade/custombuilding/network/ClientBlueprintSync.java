@@ -20,6 +20,7 @@ import net.minecraft.core.HolderLookup;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.packs.resources.ResourceManager;
+import net.minecraft.world.flag.FeatureFlagSet;
 import net.minecraft.world.item.CreativeModeTab;
 import net.minecraft.world.item.CreativeModeTabs;
 import net.minecraft.world.item.Item;
@@ -47,11 +48,14 @@ import net.neoforged.neoforge.client.CreativeModeTabSearchRegistry;
  * {@link MergedSearchTree}.  Pinyin search mods such as Just Enough Characters replace the implementation of
  * {@code SearchTree.plainText}, so the small tree gets their matching for free.</p>
  *
- * <p>Vanilla defers the very first build of the tabs and their trees until the creative screen is opened
- * for the first time.  That work is deliberately <em>not</em> pre-warmed here: building every tab is itself
- * a main-thread freeze, and paying it at the join tick would only move the stall, not remove it.  What the
- * mod does guarantee is that no reload afterwards ever rebuilds anything big: the first open stays exactly
- * as expensive as pure vanilla's, and every later open and every {@code /reload} cost milliseconds.</p>
+ * <p>Vanilla defers the very first build of the tabs and their trees until the creative screen is opened:
+ * running every generator in the game, then indexing every item's tooltip into the search tree, and the
+ * first letter typed into the search box waits for that on the render thread.  The blueprint sync arrives
+ * at join, before any of that, so the mod triggers the same work right then - see
+ * {@link #refreshCreativeTabs} - where the world-load screen already hides a stall and the tree builds in
+ * the background.  The player's first look at the creative inventory and first search are then instant.
+ * The tab build has to happen on the client thread, so it is deliberately done once here rather than at
+ * the first open of the screen, and every reload afterwards only touches the two tabs described above.</p>
  */
 public final class ClientBlueprintSync {
     private static volatile boolean dirty;
@@ -131,22 +135,23 @@ public final class ClientBlueprintSync {
 
     /** Rebuilds the two tabs this mod is responsible for, then lets the search tree catch up. */
     private static void refreshCreativeTabs(Minecraft minecraft) {
+        long started = System.nanoTime();
+        HolderLookup.Provider registries = minecraft.level.registryAccess();
+        FeatureFlagSet enabledFeatures = minecraft.player.connection.enabledFeatures();
+        boolean hasPermissions = minecraft.player.canUseGameMasterBlocks() && minecraft.options.operatorItemsTab().get();
+
         CreativeModeTab searchTab = CreativeModeTabs.searchTab();
         if (searchTab.getDisplayItems().isEmpty()) {
-            // The tabs have never been built, so the player has not opened the creative screen yet.
-            // Vanilla builds all of them (and their search trees) itself the first time it is opened, and
-            // that build reads the blueprint list we have just received, so there is nothing to do and
-            // nothing to gain from touching the cached contents early.
+            // The tabs have never been built - the player has not opened the creative screen since the
+            // game started.  Vanilla makes that first open build every tab and schedule every search tree,
+            // and then blocks the render thread the first time a letter is typed.  Pay for it now, while
+            // the world-load screen is hiding stalls anyway; everything after this is milliseconds.
+            preBuildCreativeInventory(minecraft, registries, enabledFeatures, hasPermissions, started);
             return;
         }
 
-        long started = System.nanoTime();
-
-        HolderLookup.Provider registries = minecraft.level.registryAccess();
-        CreativeModeTab.ItemDisplayParameters parameters = new CreativeModeTab.ItemDisplayParameters(
-                minecraft.player.connection.enabledFeatures(),
-                minecraft.player.canUseGameMasterBlocks() && minecraft.options.operatorItemsTab().get(),
-                registries);
+        CreativeModeTab.ItemDisplayParameters parameters =
+                new CreativeModeTab.ItemDisplayParameters(enabledFeatures, hasPermissions, registries);
 
         // Our own tab is the only generator that has to run again.  The search tab is rebuilt right after it
         // so that its item list - which is what the search tree is built from - contains the new blueprints
@@ -168,6 +173,37 @@ public final class ClientBlueprintSync {
         // whether it still is.
         CustomBuilding.LOGGER.info("Refreshed the custom building tab and the creative search tree in {} ms ({} blueprints)",
                 (System.nanoTime() - started) / 1_000_000L, blueprints.size());
+    }
+
+    /**
+     * Does the lazy first-open work of {@code CreativeModeInventoryScreen} at world load instead: build
+     * every creative tab once, and schedule the search trees for the tabs that have a search box.  The tab
+     * generators have to run on the client thread - that is the part that would freeze the first creative
+     * open - and the tree builds themselves run in the background from here, usually long finished before
+     * anyone can type.  The blueprint list this reads is the one just received, so the blueprints are in
+     * the trees from the start and nothing needs merging afterwards.
+     */
+    private static void preBuildCreativeInventory(Minecraft minecraft, HolderLookup.Provider registries,
+                                                  FeatureFlagSet enabledFeatures, boolean hasPermissions,
+                                                  long started) {
+        if (!CreativeModeTabs.tryRebuildTabContents(enabledFeatures, hasPermissions, registries)) {
+            return;
+        }
+        ClientPacketListener connection = minecraft.getConnection();
+        if (connection != null) {
+            SessionSearchTrees searchTrees = connection.searchTrees();
+            CreativeModeTabs.allTabs().stream()
+                    .filter(CreativeModeTab::hasSearchBar)
+                    .forEach(tab -> {
+                        List<ItemStack> list = List.copyOf(tab.getDisplayItems());
+                        searchTrees.updateCreativeTooltips(registries, list,
+                                CreativeModeTabSearchRegistry.getNameSearchKey(tab));
+                        searchTrees.updateCreativeTags(list,
+                                CreativeModeTabSearchRegistry.getTagSearchKey(tab));
+                    });
+        }
+        CustomBuilding.LOGGER.info("Pre-built the creative tabs {} ms after joining the world and started their search trees",
+                (System.nanoTime() - started) / 1_000_000L);
     }
 
     /**
