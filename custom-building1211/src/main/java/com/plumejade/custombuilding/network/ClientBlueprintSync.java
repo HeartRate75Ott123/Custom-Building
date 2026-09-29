@@ -1,7 +1,7 @@
 package com.plumejade.custombuilding.network;
 
+import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Stream;
 
@@ -24,7 +24,6 @@ import net.minecraft.world.item.CreativeModeTab;
 import net.minecraft.world.item.CreativeModeTabs;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.ItemStackLinkedSet;
 import net.minecraft.world.item.TooltipFlag;
 import net.neoforged.neoforge.client.ClientTooltipFlag;
 import net.neoforged.neoforge.client.CreativeModeTabSearchRegistry;
@@ -47,6 +46,12 @@ import net.neoforged.neoforge.client.CreativeModeTabSearchRegistry;
  * already there is kept and merged with a small tree over this mod's own items; see
  * {@link MergedSearchTree}.  Pinyin search mods such as Just Enough Characters replace the implementation of
  * {@code SearchTree.plainText}, so the small tree gets their matching for free.</p>
+ *
+ * <p>Vanilla defers the very first build of the tabs and their trees until the creative screen is opened
+ * for the first time.  That work is deliberately <em>not</em> pre-warmed here: building every tab is itself
+ * a main-thread freeze, and paying it at the join tick would only move the stall, not remove it.  What the
+ * mod does guarantee is that no reload afterwards ever rebuilds anything big: the first open stays exactly
+ * as expensive as pure vanilla's, and every later open and every {@code /reload} cost milliseconds.</p>
  */
 public final class ClientBlueprintSync {
     private static volatile boolean dirty;
@@ -156,7 +161,7 @@ public final class ClientBlueprintSync {
             return;
         }
 
-        List<ItemStack> blueprints = List.copyOf(customBuildingTab.getDisplayItems());
+        List<ItemStack> blueprints = blueprintsOf();
         mergeSearchTree(minecraft, key, searchTab, blueprints);
 
         // Deliberately at INFO: a datapack reload should be invisible, and this is the line that says
@@ -224,11 +229,8 @@ public final class ClientBlueprintSync {
                 : baseFrom(current, installedBase);
         installedBase = base;
 
-        Set<ItemStack> configured = ItemStackLinkedSet.createTypeAndComponentsSet();
-        configured.addAll(blueprints);
-
-        installedFuture = CompletableFuture.completedFuture(
-                new MergedSearchTree(base, deltaTree(minecraft.level.registryAccess(), blueprints), configured));
+        installedFuture = CompletableFuture.completedFuture(new MergedSearchTree(base,
+                deltaTree(minecraft.level.registryAccess(), blueprints)));
         CreativeModeTabSearchRegistry.putNameSearchTree(key, installedFuture);
     }
 
@@ -315,9 +317,19 @@ public final class ClientBlueprintSync {
                 blueprints);
     }
 
-    /** The items of this mod's creative tab, which are the ones the merge has to keep searchable. */
+    /**
+     * The stacks of the blueprint item currently on this mod's creative tab.  The merge owns these - the
+     * big tree's copies of that item may be stale after a datapack removed or renamed one - while
+     * everything else on the tab, like the guide book, keeps being answered by the big tree alone.
+     */
     private static List<ItemStack> blueprintsOf() {
-        return List.copyOf(CustomBuilding.CUSTOM_BUILDING_TAB.get().getDisplayItems());
+        List<ItemStack> stacks = new ArrayList<>();
+        for (ItemStack stack : CustomBuilding.CUSTOM_BUILDING_TAB.get().getDisplayItems()) {
+            if (stack.is(CustomBuilding.BLUEPRINT.get())) {
+                stacks.add(stack);
+            }
+        }
+        return stacks;
     }
 
     /** The text vanilla indexes an item under: its tooltip, with the colour codes stripped. */

@@ -19,6 +19,8 @@ import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.NbtAccounter;
 import net.minecraft.nbt.NbtIo;
 import net.minecraft.nbt.Tag;
+import net.minecraft.nbt.visitors.CollectFields;
+import net.minecraft.nbt.visitors.FieldSelector;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.packs.resources.Resource;
 import net.minecraft.server.packs.resources.ResourceManager;
@@ -43,6 +45,7 @@ public class BlueprintReloadListener extends SimpleJsonResourceReloadListener {
 
     @Override
     protected void apply(Map<ResourceLocation, JsonElement> blueprints, ResourceManager resourceManager, ProfilerFiller profiler) {
+        long started = System.nanoTime();
         List<BlueprintDefinition> definitions = new ArrayList<>();
 
         blueprints.forEach((id, json) -> {
@@ -58,16 +61,25 @@ public class BlueprintReloadListener extends SimpleJsonResourceReloadListener {
         definitions.sort(Comparator.comparing(definition -> definition.id().toString()));
         BlueprintDefinitions.setServerSide(definitions);
 
-        CustomBuilding.LOGGER.info("Loaded {} custom building blueprint(s)", definitions.size());
+        CustomBuilding.LOGGER.info("Loaded {} custom building blueprint(s) in {} ms",
+                definitions.size(), (System.nanoTime() - started) / 1_000_000L);
     }
 
     /**
-     * Reads the {@code size} tag straight out of the structure nbt file.  Only the size is needed - loading a
-     * full {@code StructureTemplate} would require a block lookup - and it lets the client draw the placement
-     * outline without having to read the datapack itself.
+     * Peeks at the {@code size} tag of the structure nbt file without loading the structure.  Only the size
+     * is needed - it lets the client draw the placement outline before the blocks arrive - and reading the
+     * whole file would be a reload cost that grows with every block of every building: a full parse
+     * decompresses the file and allocates a tag for every palette entry and block index, only to throw
+     * away everything but three integers.
      *
-     * <p>Textures live under {@code assets/} and cannot be seen from the server's resource manager, so they are
-     * validated on the client instead.</p>
+     * <p>Vanilla writes {@code size} as the first field of a structure file, so the streaming visitor reads
+     * a handful of bytes and halts.  Files whose fields come in another order are still skipped
+     * structurally - the bytes advance, no tags are built - and cost a fraction of a full parse.  This is
+     * the same {@code CollectFields}/{@code parseCompressed} pattern vanilla uses to scan chunk and level
+     * data without loading it ({@code IOWorker}, {@code LevelStorageSource}).</p>
+     *
+     * <p>Textures live under {@code assets/} and cannot be seen from the server's resource manager, so they
+     * are validated on the client instead.</p>
      */
     private static BlueprintDefinition withStructureSize(ResourceManager resourceManager, BlueprintDefinition definition) {
         ResourceLocation file = BlueprintPaths.structureFile(definition.structure());
@@ -80,7 +92,13 @@ public class BlueprintReloadListener extends SimpleJsonResourceReloadListener {
         }
 
         try (InputStream stream = resource.get().open()) {
-            CompoundTag tag = NbtIo.readCompressed(stream, NbtAccounter.unlimitedHeap());
+            CollectFields visitor = new CollectFields(new FieldSelector(ListTag.TYPE, "size"));
+            NbtIo.parseCompressed(stream, visitor, NbtAccounter.unlimitedHeap());
+            if (!(visitor.getResult() instanceof CompoundTag tag)) {
+                CustomBuilding.LOGGER.warn("Structure '{}' of blueprint '{}' does not start with a compound tag",
+                        definition.structure(), definition.id());
+                return definition;
+            }
             ListTag size = tag.getList("size", Tag.TAG_INT);
             if (size.size() == 3) {
                 return definition.withSize(new Vec3i(size.getInt(0), size.getInt(1), size.getInt(2)));
