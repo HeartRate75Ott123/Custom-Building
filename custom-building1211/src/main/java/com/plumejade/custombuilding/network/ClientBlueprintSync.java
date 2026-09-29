@@ -237,7 +237,7 @@ public final class ClientBlueprintSync {
      *
      * <p>A build that is still running is picked up when it finishes; until then {@code fallback} - the
      * tree that was serving searches - keeps answering, so replacing the tree never blanks out the search.
-     * Only the very first merge after a world was joined has no fallback to offer, and there the search
+     * Only the very first merge after the game was started has no fallback to offer, and there the search
      * answers with this mod's items until vanilla's build lands.</p>
      */
     private static SearchTree<ItemStack> baseFrom(CompletableFuture<SearchTree<ItemStack>> future,
@@ -246,11 +246,50 @@ public final class ClientBlueprintSync {
         if (built != null) {
             return built;
         }
-        SearchTree<ItemStack> untilThen = fallback == null ? SearchTree.empty() : fallback;
-        return query -> {
-            SearchTree<ItemStack> now = ready(future);
-            return (now == null ? untilThen : now).search(query);
-        };
+        return new DeferredSearchTree(future, fallback == null ? SearchTree.empty() : fallback);
+    }
+
+    /**
+     * The tree that answers while another one is still being built.
+     *
+     * <p>It starts out as {@code fallback} and switches to the tree of {@code pending} the moment that
+     * build lands.  Building a creative search tree - a tooltip for every item in the game, and with
+     * Just Enough Characters in the picture every name expanded into pinyin as well - is the most expensive
+     * thing a reload can touch, and this is the only place where the wait for it is still observable, so
+     * the wait is logged.</p>
+     */
+    private static final class DeferredSearchTree implements SearchTree<ItemStack> {
+        private final CompletableFuture<SearchTree<ItemStack>> pending;
+        private final SearchTree<ItemStack> fallback;
+        private final long started = System.nanoTime();
+        private boolean reported;
+
+        DeferredSearchTree(CompletableFuture<SearchTree<ItemStack>> pending, SearchTree<ItemStack> fallback) {
+            this.pending = pending;
+            this.fallback = fallback;
+        }
+
+        @Override
+        public List<ItemStack> search(String query) {
+            SearchTree<ItemStack> built = ready(this.pending);
+            if (built == null) {
+                return this.fallback.search(query);
+            }
+            report();
+            return built.search(query);
+        }
+
+        private void report() {
+            if (this.reported) {
+                return;
+            }
+            this.reported = true;
+            // Deliberately at INFO: this is the one case a search can be incomplete for a while, and the
+            // number is how long that lasted.
+            CustomBuilding.LOGGER.info(
+                    "The creative search tree finished building {} ms after the blueprints were merged; searches were served by the previous tree until then",
+                    (System.nanoTime() - this.started) / 1_000_000L);
+        }
     }
 
     /** The tree of a finished future, or {@code null} while it is still running or has failed. */
