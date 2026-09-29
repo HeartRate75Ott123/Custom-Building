@@ -41,15 +41,26 @@ import net.neoforged.neoforge.client.CreativeModeTabSearchRegistry;
  *
  * <p>The creative <em>search</em> has a second, separate cache: the search trees.  Vanilla only fills them
  * from {@code CreativeModeInventoryScreen}, and only while it performs that same full rebuild.  They
- * therefore have to be refilled here - but not by rebuilding them.  Building one means asking every item
- * for its tooltip and sorting the result, which is heavy enough to be noticeable, and the creative screen
- * {@code join}s the tree on the render thread as soon as the player types.  Instead the tree that is
+ * therefore have to be refilled here - but not by rebuilding them.  Building one means asking every item in
+ * the game for its tooltip and sorting the result, which is heavy enough to be noticeable, and the creative
+ * screen {@code join}s the tree on the render thread as soon as the player types.  Instead the tree that is
  * already there is kept and merged with a small tree over this mod's own items; see
- * {@link MergedSearchTree}.  Pinyin search mods such as Just Enough Characters replace the implementation
- * of {@code SearchTree.plainText}, so the small tree gets their matching for free.</p>
+ * {@link MergedSearchTree}.  Pinyin search mods such as Just Enough Characters replace the implementation of
+ * {@code SearchTree.plainText}, so the small tree gets their matching for free.</p>
  */
 public final class ClientBlueprintSync {
     private static volatile boolean dirty;
+
+    /**
+     * The future this class last put into the registry, and the tree the merge was based on.
+     *
+     * <p>Everything here runs on the client thread - the tick that maintains it and the render thread that
+     * searches the tree are the same thread - so no synchronisation is needed.  The identity of the future
+     * is what tells us whether the tree in the registry is still ours, and the base lets a later merge
+     * flatten instead of stacking another layer on our own previous merge.</p>
+     */
+    private static CompletableFuture<SearchTree<ItemStack>> installedFuture;
+    private static SearchTree<ItemStack> installedBase;
 
     private ClientBlueprintSync() {}
 
@@ -85,89 +96,189 @@ public final class ClientBlueprintSync {
         }
     }
 
-    /** Called every client tick; refreshes the creative tabs once the client is ready for it. */
+    /** Called every client tick: applies a new blueprint list, and otherwise guards the search tree. */
     public static void tick() {
-        if (!dirty) {
-            return;
-        }
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft.player == null || minecraft.level == null) {
             return;
         }
-        dirty = false;
 
-        try {
-            CreativeModeTab searchTab = CreativeModeTabs.searchTab();
-            if (searchTab.getDisplayItems().isEmpty()) {
-                // The tabs have never been built, so the player has not opened the creative screen yet.
-                // Vanilla builds all of them (and their search trees) itself the first time it is opened,
-                // and that build reads the blueprint list we have just received, so there is nothing to do
-                // and nothing to gain from touching the cached contents early.
-                return;
+        if (!dirty) {
+            try {
+                keepSearchTreeCurrent(minecraft);
+            } catch (Exception exception) {
+                // Loading a new world cancels trees out from under us; give up on this one instead of
+                // retrying - and failing - every tick.  The next blueprint sync merges again.
+                installedFuture = null;
+                installedBase = null;
+                CustomBuilding.LOGGER.error("Failed to keep the creative search tree in sync", exception);
             }
+            return;
+        }
 
-            HolderLookup.Provider registries = minecraft.level.registryAccess();
-            CreativeModeTab.ItemDisplayParameters parameters = new CreativeModeTab.ItemDisplayParameters(
-                    minecraft.player.connection.enabledFeatures(),
-                    minecraft.player.canUseGameMasterBlocks() && minecraft.options.operatorItemsTab().get(),
-                    registries);
-
-            // Our own tab is the only generator that has to run again.  The search tab is rebuilt right
-            // after it so that its item list - which is what the search tree is built from - contains the
-            // new blueprints too; its generator only collects what every other tab has already built.
-            long started = System.nanoTime();
-            CreativeModeTab customBuildingTab = CustomBuilding.CUSTOM_BUILDING_TAB.get();
-            customBuildingTab.buildContents(parameters);
-            searchTab.buildContents(parameters);
-
-            List<ItemStack> blueprints = List.copyOf(customBuildingTab.getDisplayItems());
-            refreshSearchTree(minecraft, registries, searchTab, blueprints);
-
-            // Deliberately at INFO: a datapack reload should be invisible, and this is the line that says
-            // whether it still is.
-            CustomBuilding.LOGGER.info("Refreshed the custom building tab and the creative search tree in {} ms ({} blueprints)",
-                    (System.nanoTime() - started) / 1_000_000L, blueprints.size());
+        dirty = false;
+        try {
+            refreshCreativeTabs(minecraft);
         } catch (Exception exception) {
             CustomBuilding.LOGGER.error("Failed to refresh the creative mode tabs", exception);
         }
     }
 
+    /** Rebuilds the two tabs this mod is responsible for, then lets the search tree catch up. */
+    private static void refreshCreativeTabs(Minecraft minecraft) {
+        CreativeModeTab searchTab = CreativeModeTabs.searchTab();
+        if (searchTab.getDisplayItems().isEmpty()) {
+            // The tabs have never been built, so the player has not opened the creative screen yet.
+            // Vanilla builds all of them (and their search trees) itself the first time it is opened, and
+            // that build reads the blueprint list we have just received, so there is nothing to do and
+            // nothing to gain from touching the cached contents early.
+            return;
+        }
+
+        long started = System.nanoTime();
+
+        HolderLookup.Provider registries = minecraft.level.registryAccess();
+        CreativeModeTab.ItemDisplayParameters parameters = new CreativeModeTab.ItemDisplayParameters(
+                minecraft.player.connection.enabledFeatures(),
+                minecraft.player.canUseGameMasterBlocks() && minecraft.options.operatorItemsTab().get(),
+                registries);
+
+        // Our own tab is the only generator that has to run again.  The search tab is rebuilt right after it
+        // so that its item list - which is what the search tree is built from - contains the new blueprints
+        // too; its generator only collects what every other tab has already built.
+        CreativeModeTab customBuildingTab = CustomBuilding.CUSTOM_BUILDING_TAB.get();
+        customBuildingTab.buildContents(parameters);
+        searchTab.buildContents(parameters);
+
+        SessionSearchTrees.Key key = CreativeModeTabSearchRegistry.getNameSearchKey(searchTab);
+        if (key == null) {
+            CustomBuilding.LOGGER.warn("The creative search tab has no search key, blueprints cannot be made searchable");
+            return;
+        }
+
+        List<ItemStack> blueprints = List.copyOf(customBuildingTab.getDisplayItems());
+        mergeSearchTree(minecraft, key, searchTab, blueprints);
+
+        // Deliberately at INFO: a datapack reload should be invisible, and this is the line that says
+        // whether it still is.
+        CustomBuilding.LOGGER.info("Refreshed the custom building tab and the creative search tree in {} ms ({} blueprints)",
+                (System.nanoTime() - started) / 1_000_000L, blueprints.size());
+    }
+
     /**
-     * Makes the newly configured blueprints findable again, without rebuilding the creative search tree.
+     * Reinstates this mod's items in the creative search tree whenever it is no longer the tree we put
+     * there.
      *
-     * <p>The tree is only replaced once a small tree holding this mod's items is ready, which takes
-     * microseconds instead of the hundreds of milliseconds a full rebuild needs - and because the tree that
-     * is served in the meantime is already complete, the creative screen never has to wait for a build that
-     * is still running.</p>
+     * <p>A language change is the case that matters: vanilla then rebuilds the tree from the item list its
+     * reloader captured when the tree was last built, and that list predates every blueprint configured
+     * since - so the blueprints would silently stop being findable.  (A reloader only exists once the
+     * creative screen has built the tabs, which is also the only way this class can have merged before, so
+     * that really is the case we are catching here.)  Instead of hooking the language change, the merge is
+     * simply redone: the small tree is rebuilt on the spot, so this mod's items end up indexed in whatever
+     * language is current now.</p>
      */
-    private static void refreshSearchTree(Minecraft minecraft, HolderLookup.Provider registries,
-                                          CreativeModeTab searchTab, List<ItemStack> blueprints) {
+    private static void keepSearchTreeCurrent(Minecraft minecraft) {
+        if (installedFuture == null) {
+            // Nothing of ours is in the tree, so there is nothing to keep alive.
+            return;
+        }
+        if (minecraft.getConnection() == null) {
+            return;
+        }
+        CreativeModeTab searchTab = CreativeModeTabs.searchTab();
+        SessionSearchTrees.Key key = CreativeModeTabSearchRegistry.getNameSearchKey(searchTab);
+        if (key == null || CreativeModeTabSearchRegistry.getNameSearchTree(key) == installedFuture) {
+            return;
+        }
+        mergeSearchTree(minecraft, key, searchTab, blueprintsOf());
+    }
+
+    /**
+     * Merges a small tree over this mod's items into whatever tree the creative inventory searches.
+     *
+     * <p>The tree is only ever replaced by a future that is already complete, so the creative screen can
+     * never end up waiting for a build: either there is a finished tree to search (ours), or - while
+     * vanilla's is still running - the tree that was serving searches before.</p>
+     */
+    private static void mergeSearchTree(Minecraft minecraft, SessionSearchTrees.Key key,
+                                        CreativeModeTab searchTab, List<ItemStack> blueprints) {
         ClientPacketListener connection = minecraft.getConnection();
         if (connection == null || blueprints.isEmpty()) {
             return;
         }
 
-        SessionSearchTrees.Key key = CreativeModeTabSearchRegistry.getNameSearchKey(searchTab);
         CompletableFuture<SearchTree<ItemStack>> current = CreativeModeTabSearchRegistry.getNameSearchTree(key);
-        if (!current.isDone() || current.isCompletedExceptionally()) {
-            // A full build is still running, or the last one was cancelled.  Do what the creative screen
-            // does instead of racing it.
-            SessionSearchTrees searchTrees = connection.searchTrees();
-            searchTrees.updateCreativeTooltips(registries, List.copyOf(searchTab.getDisplayItems()), key);
+        if (current.isCompletedExceptionally()) {
+            // Nothing usable can be joined for this key.  Build the tree the way the creative screen does;
+            // it also registers the reloader that keeps it alive across a language change.  Our blueprints
+            // are in the list this uses, so there is nothing to merge afterwards.
+            connection.searchTrees().updateCreativeTooltips(minecraft.level.registryAccess(),
+                    List.copyOf(searchTab.getDisplayItems()), key);
+            installedFuture = null;
+            installedBase = null;
             return;
         }
 
-        Item.TooltipContext context = Item.TooltipContext.of(registries);
-        TooltipFlag flag = ClientTooltipFlag.of(TooltipFlag.Default.NORMAL.asCreative());
-        SearchTree<ItemStack> added = new FullTextSearchTree<>(
-                stack -> tooltipLines(stack, context, flag),
-                stack -> stack.getItemHolder().unwrapKey().map(ResourceKey::location).stream(),
-                blueprints);
+        SearchTree<ItemStack> base = current == installedFuture && installedBase != null
+                ? installedBase
+                : baseFrom(current, installedBase);
+        installedBase = base;
 
         Set<ItemStack> configured = ItemStackLinkedSet.createTypeAndComponentsSet();
         configured.addAll(blueprints);
-        CreativeModeTabSearchRegistry.putNameSearchTree(key, CompletableFuture.completedFuture(
-                new MergedSearchTree(current.getNow(SearchTree.empty()), added, configured)));
+
+        installedFuture = CompletableFuture.completedFuture(
+                new MergedSearchTree(base, deltaTree(minecraft.level.registryAccess(), blueprints), configured));
+        CreativeModeTabSearchRegistry.putNameSearchTree(key, installedFuture);
+    }
+
+    /**
+     * The tree to merge with, without ever waiting for it.
+     *
+     * <p>A build that is still running is picked up when it finishes; until then {@code fallback} - the
+     * tree that was serving searches - keeps answering, so replacing the tree never blanks out the search.
+     * Only the very first merge after a world was joined has no fallback to offer, and there the search
+     * answers with this mod's items until vanilla's build lands.</p>
+     */
+    private static SearchTree<ItemStack> baseFrom(CompletableFuture<SearchTree<ItemStack>> future,
+                                                  SearchTree<ItemStack> fallback) {
+        SearchTree<ItemStack> built = ready(future);
+        if (built != null) {
+            return built;
+        }
+        SearchTree<ItemStack> untilThen = fallback == null ? SearchTree.empty() : fallback;
+        return query -> {
+            SearchTree<ItemStack> now = ready(future);
+            return (now == null ? untilThen : now).search(query);
+        };
+    }
+
+    /** The tree of a finished future, or {@code null} while it is still running or has failed. */
+    private static SearchTree<ItemStack> ready(CompletableFuture<SearchTree<ItemStack>> future) {
+        if (!future.isDone() || future.isCompletedExceptionally()) {
+            return null;
+        }
+        try {
+            return future.getNow(null);
+        } catch (RuntimeException exception) {
+            // Cancelled between the check and the read; a search must never throw.
+            return null;
+        }
+    }
+
+    /** The small tree that indexes this mod's items exactly the way vanilla indexes the whole inventory. */
+    private static SearchTree<ItemStack> deltaTree(HolderLookup.Provider registries, List<ItemStack> blueprints) {
+        Item.TooltipContext context = Item.TooltipContext.of(registries);
+        TooltipFlag flag = ClientTooltipFlag.of(TooltipFlag.Default.NORMAL.asCreative());
+        return new FullTextSearchTree<>(
+                stack -> tooltipLines(stack, context, flag),
+                stack -> stack.getItemHolder().unwrapKey().map(ResourceKey::location).stream(),
+                blueprints);
+    }
+
+    /** The items of this mod's creative tab, which are the ones the merge has to keep searchable. */
+    private static List<ItemStack> blueprintsOf() {
+        return List.copyOf(CustomBuilding.CUSTOM_BUILDING_TAB.get().getDisplayItems());
     }
 
     /** The text vanilla indexes an item under: its tooltip, with the colour codes stripped. */
