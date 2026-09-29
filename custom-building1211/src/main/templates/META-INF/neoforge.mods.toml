@@ -11,10 +11,6 @@ logoFile="${mod_id}.png"
 authors="${mod_authors}"
 description='''${mod_description}'''
 
-# The [[accessTransformers]] block allows us to declare where our AT file is.
-[[accessTransformers]]
-file="META-INF/accesstransformer.cfg"
-
 [[dependencies.${mod_id}]] #optional
     modId="neoforge" #mandatory
     type="required" #mandatory

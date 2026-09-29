@@ -77,9 +77,14 @@ dedicated server where the client never sees the datapack.
 Items cannot be added to a registry after the game has started, so every blueprint shares the single
 `custom_building:blueprint` item and carries its identity in the `custom_building:blueprint` data
 component.  The server owns the authoritative blueprint list (datapack reload listener) and pushes it
-to clients on join and on every `/reload`; the client then invalidates
-`CreativeModeTabs.CACHED_PARAMETERS` so the creative tab contents are rebuilt - the same technique
-KubeJS uses.  Because the item texture is resolved at render time by a
+to clients on join and on every `/reload`; the client then rebuilds two tabs through the public
+`CreativeModeTab#buildContents`: its own, and the search tab whose item list is what the search tree is
+built from.  Rebuilding every tab in the game instead - what invalidating
+`CreativeModeTabs.CACHED_PARAMETERS` amounts to - is a visible frame drop in a large modpack.
+
+The creative search tree is not rebuilt at all: the tree that is already there is kept and merged with a
+small tree holding this mod's items, so neither `/reload` nor typing in the search box ever waits for a
+build that is still running.  Because the item texture is resolved at render time by a
 `BlockEntityWithoutLevelRenderer`, no resource pack or generated model is needed for a new blueprint.
 
 ## Building
@@ -93,5 +98,5 @@ gradlew runServer    # dev server (accept run/eula.txt first)
 ## Credits
 
 Author: Plume Jade.  Blueprint/preview/placement behaviour modelled on
-[MC-Prefab](https://github.com/WuestMan/MC-Prefab) 1.21.1; creative tab refresh technique modelled on
-[KubeJS](https://github.com/KubeJS-Mods/KubeJS).
+[MC-Prefab](https://github.com/WuestMan/MC-Prefab) 1.21.1; the ghost preview and its mouse controls on
+[Litematica](https://github.com/maruohon/litematica).
